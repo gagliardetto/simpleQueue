@@ -93,7 +93,7 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 				//fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
 				wwg.Add(1)
 				consumer(task)
-				fmt.Printf("worker%v finished task %v\n\n", w.id, task.(Task).Name)
+				fmt.Printf("worker%v FINISHED task %v\n\n", w.id, task.(Task).Name)
 				wwg.Done()
 			case <-w.quitChan:
 				// We have been asked to stop.
@@ -221,7 +221,10 @@ func main() {
 			case qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 3000}:
 			default:
 				break R
-				fmt.Println("cannot send")
+				fmt.Println("@@@@@@@@ cannot send")
+				fmt.Println("@@@@@@@@ cannot send")
+				fmt.Println("@@@@@@@@ cannot send")
+				fmt.Println("@@@@@@@@ cannot send")
 			}
 		}
 	}()
