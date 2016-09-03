@@ -33,8 +33,8 @@ func main() {
 			}
 		}
 	*/
-
-	fmt.Println("remaining: ", qq.Stop())
+	rem := qq.Stop()
+	fmt.Println("remaining: ", rem)
 	fmt.Println("counter: ", counter)
 
 	//////////////////////////////////////////////////////////

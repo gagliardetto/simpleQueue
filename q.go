@@ -1,8 +1,11 @@
-package q
+package main
 
 import (
 	"fmt"
 	"sync"
+
+	"sync/atomic"
+	"time"
 )
 
 type Worker struct {
@@ -25,34 +28,6 @@ func NewWorker(id int, workerPool chan *chan interface{}) Worker {
 func (w Worker) stop() {
 	go func() {
 		w.quitChan <- true
-	}()
-}
-
-func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
-	go func() {
-		var wwg sync.WaitGroup
-		for {
-			// Add my taskQueue to the worker pool.
-			w.workerPool <- &w.taskQueue
-
-			select {
-			case task := <-w.taskQueue:
-				// Dispatcher has added a task to my taskQueue.
-				// fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
-				wwg.Add(1)
-				consumer(task)
-				//fmt.Printf("worker%v finished task %v\n\n", w.id, task.(Task).Name)
-				wwg.Done()
-			case <-w.quitChan:
-				// We have been asked to stop.
-				debugf("worker%d stopping; remaining: %v\n", w.id, len(w.taskQueue))
-				w.taskQueue = nil
-				wwg.Wait()
-				// close(w.taskQueue)
-				wg.Done()
-				return
-			}
-		}
 	}()
 }
 
@@ -120,7 +95,7 @@ func (q *Q) dispatch() {
 				case task, ok := <-q.TaskQueue:
 					if ok {
 						//debugln("taskN:", task.(Task).Name)
-						//fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
+						fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
 
 						if *workerTaskQueue != nil {
 							*workerTaskQueue <- task
@@ -159,6 +134,34 @@ func (q *Q) dispatch() {
 	}
 }
 
+func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
+	go func() {
+		var wwg sync.WaitGroup
+		for {
+			// Add my taskQueue to the worker pool.
+			w.workerPool <- &w.taskQueue
+
+			select {
+			case task := <-w.taskQueue:
+				// Dispatcher has added a task to my taskQueue.
+				fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
+				wwg.Add(1)
+				consumer(task)
+				fmt.Printf("worker%v finished task %v\n\n", w.id, task.(Task).Name)
+				wwg.Done()
+			case <-w.quitChan:
+				// We have been asked to stop.
+				debugf("worker%d stopping; remaining: %v\n", w.id, len(w.taskQueue))
+				w.taskQueue = nil
+				wwg.Wait()
+				// close(w.taskQueue)
+				wg.Done()
+				return
+			}
+		}
+	}()
+}
+
 func (q *Q) Stop() (notProcessed int) {
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
@@ -179,7 +182,7 @@ func (q *Q) Stop() (notProcessed int) {
 	return
 }
 
-var debugging = false
+var debugging = true
 
 func debugf(format string, a ...interface{}) (int, error) {
 	if debugging {
@@ -193,4 +196,58 @@ func debugln(a ...interface{}) (int, error) {
 		return fmt.Println(a...)
 	}
 	return 0, nil
+}
+
+////////////////////////////////////
+
+func main() {
+	var (
+		maxWorkers   = 10
+		maxQueueSize = 100
+	)
+
+	qq := NewQueue()
+	qq.SetMaxSize(maxQueueSize)
+	qq.SetWorkers(maxWorkers)
+	qq.Consumer = Consumer
+	qq.Start()
+
+	for i := 1; i <= 1000; i++ {
+		qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 100}
+	}
+
+	//time.Sleep(time.Second * 3)
+	/*
+		for {
+			m, ok := <-qq.TaskQueue
+			if ok {
+				fmt.Println("not proc: ", m.(Task).Name)
+			}
+		}
+	*/
+	rem := qq.Stop()
+	fmt.Println("remaining: ", rem)
+	fmt.Println("counter: ", counter)
+
+}
+
+// Task holds the attributes needed to perform unit of work
+type Task struct {
+	Name  string
+	Delay time.Duration
+}
+
+var counter int64 = 0
+
+func Consumer(j interface{}) error {
+	if j == nil {
+		return fmt.Errorf("%v", "j is nil")
+	}
+	task := j.(Task)
+
+	//fmt.Printf("%v --> name: %v; delay: %v\n", counter, task.Name, task.Delay)
+	time.Sleep(task.Delay)
+	atomic.AddInt64(&counter, 1)
+
+	return nil
 }
