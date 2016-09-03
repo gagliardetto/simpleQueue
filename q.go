@@ -80,60 +80,6 @@ func (q *Q) Start() {
 	go q.dispatch()
 }
 
-// TODO:
-func (q *Q) dispatch() {
-	for {
-
-		debugf("\nFETCHING workerTaskQueue, \n")
-		// some tasks will never be assigned, because there will be no workers !!!
-		select {
-		case workerTaskQueue, ok := <-q.workerPool:
-			//go func() {
-			if ok {
-
-				select {
-				case task, ok := <-q.TaskQueue:
-					if ok {
-						//debugln("taskN:", task.(Task).Name)
-						fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
-
-						if *workerTaskQueue != nil {
-							*workerTaskQueue <- task
-						} else {
-							q.TaskQueue <- task
-							return
-						}
-
-					} else {
-						debugln("task Channel closed!")
-						return
-					}
-					//default:
-					//fmt.Println("No task ready, moving on.")
-
-				}
-
-			} else {
-				q.workerPool = nil
-				debugln("workerpool Channel closed!")
-				return
-			}
-			//}()
-			//default:
-			//fmt.Println("No worker ready, moving on.")
-			//	go func() {
-			// Add task to backburner, where all the tasks that
-			// can't be completed (because no worker is ready) go.
-			//	}()
-		}
-
-		if q.workerPool == nil {
-			break
-		}
-
-	}
-}
-
 func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 	go func() {
 		var wwg sync.WaitGroup
@@ -144,7 +90,7 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 			select {
 			case task := <-w.taskQueue:
 				// Dispatcher has added a task to my taskQueue.
-				fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
+				//fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
 				wwg.Add(1)
 				consumer(task)
 				fmt.Printf("worker%v finished task %v\n\n", w.id, task.(Task).Name)
@@ -162,7 +108,63 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 	}()
 }
 
+func (q *Q) dispatch() {
+	for {
+
+		select {
+		case task, ok := <-q.TaskQueue:
+			if ok {
+				debugln("taskN:", task.(Task).Name)
+
+				debugf("\nFETCHING workerTaskQueue, \n")
+				// some tasks will never be assigned, because there will be no workers !!!
+				select {
+				case workerTaskQueue, ok := <-q.workerPool:
+					//go func() {
+					if ok {
+						fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
+
+						if *workerTaskQueue != nil {
+							*workerTaskQueue <- task
+						} else {
+							q.TaskQueue <- task
+							return
+						}
+					} else {
+						q.workerPool = nil
+						debugln("workerpool Channel closed!")
+						return
+					}
+					//}()
+					//default:
+					//fmt.Println("No worker ready, moving on.")
+					//	go func() {
+					// Add task to backburner, where all the tasks that
+					// can't be completed (because no worker is ready) go.
+					//	}()
+				}
+
+				if q.workerPool == nil {
+					break
+				}
+
+			} else {
+				debugln("task Channel closed!")
+				return
+			}
+			//default:
+			//fmt.Println("No task ready, moving on.")
+
+		}
+
+	}
+}
+
 func (q *Q) Stop() (notProcessed int) {
+
+	fmt.Println("#####################################################")
+	fmt.Println("#####################################################")
+	fmt.Println("#####################################################")
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
 
@@ -172,8 +174,8 @@ func (q *Q) Stop() (notProcessed int) {
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
 
-	close(q.TaskQueue)
-	close(q.workerPool)
+	// close(q.TaskQueue)
+	// close(q.workerPool)
 
 	q.wg.Wait()
 
@@ -203,7 +205,7 @@ func debugln(a ...interface{}) (int, error) {
 func main() {
 	var (
 		maxWorkers   = 10
-		maxQueueSize = 100
+		maxQueueSize = 1000
 	)
 
 	qq := NewQueue()
@@ -212,11 +214,19 @@ func main() {
 	qq.Consumer = Consumer
 	qq.Start()
 
-	for i := 1; i <= 1000; i++ {
-		qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 100}
-	}
+	go func() {
+	R:
+		for i := 1; i <= 1000; i++ {
+			select {
+			case qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 3000}:
+			default:
+				break R
+				fmt.Println("cannot send")
+			}
+		}
+	}()
 
-	//time.Sleep(time.Second * 3)
+	time.Sleep(time.Millisecond * 3100)
 	/*
 		for {
 			m, ok := <-qq.TaskQueue
