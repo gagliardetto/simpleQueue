@@ -218,7 +218,7 @@ func main() {
 	R:
 		for i := 1; i <= 1000; i++ {
 			select {
-			case qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 3000}:
+			case qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 330}:
 			default:
 				break R
 				fmt.Println("@@@@@@@@ cannot send")
