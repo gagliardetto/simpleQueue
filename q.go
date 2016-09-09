@@ -1,4 +1,4 @@
-package main
+package simpleQueue
 
 import (
 	"fmt"
@@ -31,7 +31,7 @@ func (w Worker) stop() {
 	}()
 }
 
-type Q struct {
+type Queue struct {
 	TaskQueue chan interface{}
 	Consumer  func(interface{}) error
 
@@ -43,26 +43,26 @@ type Q struct {
 	quits []chan bool
 }
 
-func NewQueue() *Q {
-	return &Q{
+func NewQueue() *Queue {
+	return &Queue{
 		maxQueueSize: 100,
 		maxWorkers:   5,
 	}
 }
 
-func (q *Q) SetMaxSize(i int) {
+func (q *Queue) SetMaxSize(i int) {
 	if i >= 1 {
 		q.maxQueueSize = i
 	}
 }
 
-func (q *Q) SetWorkers(i int) {
+func (q *Queue) SetWorkers(i int) {
 	if i >= 1 {
 		q.maxWorkers = i
 	}
 }
 
-func (q *Q) Start() {
+func (q *Queue) Start() {
 	if q.Consumer == nil {
 		panic("please set a consumer; cansumer cannot be nil")
 	}
@@ -92,8 +92,11 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 				// Dispatcher has added a task to my taskQueue.
 				//fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
 				wwg.Add(1)
-				consumer(task)
-				fmt.Printf("worker%v FINISHED task %v\n\n", w.id, task.(Task).Name)
+				err := consumer(task)
+				if err != nil {
+					fmt.Println("consumer error:", err)
+				}
+				//fmt.Printf("worker%v FINISHED task %v\n\n", w.id, task.(Task).Name)
 				wwg.Done()
 			case <-w.quitChan:
 				// We have been asked to stop.
@@ -108,13 +111,13 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 	}()
 }
 
-func (q *Q) dispatch() {
+func (q *Queue) dispatch() {
 	for {
 
 		select {
 		case task, ok := <-q.TaskQueue:
 			if ok {
-				debugln("taskN:", task.(Task).Name)
+				//debugln("taskN:", task.(Task).Name)
 
 				debugf("\nFETCHING workerTaskQueue, \n")
 				// some tasks will never be assigned, because there will be no workers !!!
@@ -122,7 +125,7 @@ func (q *Q) dispatch() {
 				case workerTaskQueue, ok := <-q.workerPool:
 					//go func() {
 					if ok {
-						fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
+						//fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
 
 						if *workerTaskQueue != nil {
 							*workerTaskQueue <- task
@@ -160,7 +163,8 @@ func (q *Q) dispatch() {
 	}
 }
 
-func (q *Q) Stop() (notProcessed int) {
+// Stop waits for all workers to finish the task they are working on, and then exits
+func (q *Queue) Stop() (notProcessed int) {
 
 	fmt.Println("#####################################################")
 	fmt.Println("#####################################################")
@@ -184,7 +188,7 @@ func (q *Q) Stop() (notProcessed int) {
 	return
 }
 
-var debugging = true
+var debugging = false
 
 func debugf(format string, a ...interface{}) (int, error) {
 	if debugging {
@@ -202,7 +206,7 @@ func debugln(a ...interface{}) (int, error) {
 
 ////////////////////////////////////
 
-func main() {
+func Example() {
 	var (
 		maxWorkers   = 10
 		maxQueueSize = 1000
