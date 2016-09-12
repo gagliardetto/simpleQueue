@@ -11,12 +11,12 @@ import (
 type Worker struct {
 	id         int
 	taskQueue  chan interface{}
-	workerPool chan *chan interface{}
+	workerPool chan chan interface{}
 	quitChan   chan bool
 }
 
 // NewWorker creates takes a numeric id and a channel w/ worker pool.
-func NewWorker(id int, workerPool chan *chan interface{}) Worker {
+func NewWorker(id int, workerPool chan chan interface{}) Worker {
 	return Worker{
 		id:         id,
 		taskQueue:  make(chan interface{}),
@@ -35,7 +35,7 @@ type Queue struct {
 	TaskQueue chan interface{}
 	Consumer  func(interface{}) error
 
-	workerPool   chan *chan interface{}
+	workerPool   chan chan interface{}
 	maxQueueSize int
 	maxWorkers   int
 
@@ -50,16 +50,25 @@ func NewQueue() *Queue {
 	}
 }
 
-func (q *Queue) SetMaxSize(i int) {
+func (q *Queue) SetMaxSize(i int) *Queue {
 	if i >= 1 {
 		q.maxQueueSize = i
 	}
+	return q
 }
 
-func (q *Queue) SetWorkers(i int) {
+func (q *Queue) SetWorkers(i int) *Queue {
 	if i >= 1 {
 		q.maxWorkers = i
 	}
+	return q
+}
+
+func (q *Queue) SetConsumer(consumer func(interface{}) error) *Queue {
+	if consumer != nil {
+		q.Consumer = consumer
+	}
+	return q
 }
 
 func (q *Queue) Start() {
@@ -68,7 +77,7 @@ func (q *Queue) Start() {
 	}
 
 	q.TaskQueue = make(chan interface{}, q.maxQueueSize)
-	q.workerPool = make(chan *chan interface{}, q.maxWorkers)
+	q.workerPool = make(chan chan interface{}, q.maxWorkers)
 
 	for i := 1; i <= q.maxWorkers; i++ {
 		q.wg.Add(1)
@@ -85,7 +94,7 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 		var wwg sync.WaitGroup
 		for {
 			// Add my taskQueue to the worker pool.
-			w.workerPool <- &w.taskQueue
+			w.workerPool <- w.taskQueue
 
 			select {
 			case task := <-w.taskQueue:
@@ -127,8 +136,8 @@ func (q *Queue) dispatch() {
 					if ok {
 						//fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
 
-						if *workerTaskQueue != nil {
-							*workerTaskQueue <- task
+						if workerTaskQueue != nil {
+							workerTaskQueue <- task
 						} else {
 							q.TaskQueue <- task
 							return
