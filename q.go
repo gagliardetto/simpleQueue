@@ -15,8 +15,8 @@ type Worker struct {
 	quitChan   chan bool
 }
 
-// NewWorker creates takes a numeric id and a channel w/ worker pool.
-func NewWorker(id int, workerPool chan chan interface{}) Worker {
+// newWorker creates takes a numeric id and a channel w/ worker pool.
+func newWorker(id int, workerPool chan chan interface{}) Worker {
 	return Worker{
 		id:         id,
 		taskQueue:  make(chan interface{}),
@@ -81,7 +81,7 @@ func (q *Queue) Start() {
 
 	for i := 1; i <= q.maxWorkers; i++ {
 		q.wg.Add(1)
-		worker := NewWorker(i, q.workerPool)
+		worker := newWorker(i, q.workerPool)
 		q.quits = append(q.quits, worker.quitChan)
 		worker.start(q.Consumer, &q.wg)
 	}
