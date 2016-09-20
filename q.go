@@ -32,8 +32,9 @@ func (w Worker) stop() {
 }
 
 type Queue struct {
-	TaskQueue chan interface{}
-	Consumer  func(interface{}) error
+	TaskQueue     chan interface{}
+	Consumer      func(interface{}) error
+	ErrorCallback func(error)
 
 	workerPool   chan chan interface{}
 	maxQueueSize int
@@ -71,9 +72,16 @@ func (q *Queue) SetConsumer(consumer func(interface{}) error) *Queue {
 	return q
 }
 
+func (q *Queue) SetErrorCallback(callback func(error)) *Queue {
+	if callback != nil {
+		q.ErrorCallback = callback
+	}
+	return q
+}
+
 func (q *Queue) Start() {
 	if q.Consumer == nil {
-		panic("please set a consumer; cansumer cannot be nil")
+		panic("please set a consumer; consumer cannot be nil")
 	}
 
 	q.TaskQueue = make(chan interface{}, q.maxQueueSize)
@@ -83,13 +91,13 @@ func (q *Queue) Start() {
 		q.wg.Add(1)
 		worker := newWorker(i, q.workerPool)
 		q.quits = append(q.quits, worker.quitChan)
-		worker.start(q.Consumer, &q.wg)
+		worker.start(q.Consumer, q.ErrorCallback, &q.wg)
 	}
 
 	go q.dispatch()
 }
 
-func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
+func (w Worker) start(consumer func(interface{}) error, errorCallback func(error), wg *sync.WaitGroup) {
 	go func() {
 		var wwg sync.WaitGroup
 		for {
@@ -103,7 +111,9 @@ func (w Worker) start(consumer func(interface{}) error, wg *sync.WaitGroup) {
 				wwg.Add(1)
 				err := consumer(task)
 				if err != nil {
-					fmt.Println("consumer error:", err)
+					if errorCallback != nil {
+						errorCallback(err)
+					}
 				}
 				//fmt.Printf("worker%v FINISHED task %v\n\n", w.id, task.(Task).Name)
 				wwg.Done()
