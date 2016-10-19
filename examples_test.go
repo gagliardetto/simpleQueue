@@ -1,4 +1,4 @@
-package simpleQueue_test
+package simpleQueue
 
 import (
 	"fmt"
