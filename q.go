@@ -23,9 +23,9 @@ type Queue struct {
 	maxQueueSize int
 	maxWorkers   int
 
-	wg       sync.WaitGroup
-	quits    []chan bool
-	quitting bool
+	wg              sync.WaitGroup
+	quitWorkers     []chan bool
+	queueIsQuitting bool
 }
 
 // NewQueue return a new queue object loaded with some default values
@@ -92,8 +92,8 @@ func (q *Queue) Start() {
 		// create new worker and link it to pool
 		worker := newWorker(i, q.workerPool)
 
-		// register the quitChan of the worker in q.quits registry
-		q.quits = append(q.quits, worker.quitChan)
+		// register the quitChan of the worker in q.quitWorkers registry
+		q.quitWorkers = append(q.quitWorkers, worker.quitChan)
 
 		// start worker with Consumer and ErrorCallback
 		worker.start(q.Consumer, q.ErrorCallback, &q.wg)
@@ -111,10 +111,10 @@ func (q *Queue) Stop() (notProcessed int) {
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
 
-	q.quitting = true
+	q.queueIsQuitting = true
 
-	for i := range q.quits {
-		q.quits[i] <- true
+	for i := range q.quitWorkers {
+		q.quitWorkers[i] <- true
 	}
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
@@ -155,10 +155,10 @@ func (w worker) start(consumer func(interface{}) error, errorCallback func(error
 	go func() {
 		// wwg is the worker wait group
 		var wwg sync.WaitGroup
-		var quitting bool
+		var workerIsQuitting bool
 		for {
 
-			if quitting {
+			if workerIsQuitting {
 				return
 			}
 
@@ -192,7 +192,7 @@ func (w worker) start(consumer func(interface{}) error, errorCallback func(error
 				debugf("worker%d stopping; remaining: %v\n", w.id, len(w.taskQueue))
 				w.taskQueue = nil
 
-				quitting = true
+				workerIsQuitting = true
 
 				// wait for current task of this worker to be completed
 				wwg.Wait()
@@ -218,7 +218,7 @@ func (w worker) stop() {
 func (q *Queue) dispatch() {
 	for {
 
-		if q.quitting {
+		if q.queueIsQuitting {
 			return
 		}
 
