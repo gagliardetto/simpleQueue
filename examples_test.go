@@ -1,12 +1,14 @@
-package simpleQueue
+package simpleQueue_test
 
 import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/gagliardetto/simpleQueue"
 )
 
-func ExampleBasic() {
+func Example_Basic() {
 	maxQueueSize := 100
 	maxWorkers := 5
 
@@ -22,7 +24,7 @@ func ExampleBasic() {
 		return nil
 	}
 
-	newQueue := NewQueue().
+	newQueue := simpleQueue.NewQueue().
 		SetMaxSize(maxQueueSize).
 		SetWorkers(maxWorkers).
 		SetConsumer(consumer).
@@ -45,7 +47,7 @@ func ExampleBasic() {
 
 }
 
-func ExampleCounter() {
+func Example_Counter() {
 	var counter int64
 
 	maxQueueSize := 100
@@ -64,7 +66,7 @@ func ExampleCounter() {
 		return nil
 	}
 
-	newQueue := NewQueue().
+	newQueue := simpleQueue.NewQueue().
 		SetMaxSize(maxQueueSize).
 		SetWorkers(maxWorkers).
 		SetConsumer(consumer).
