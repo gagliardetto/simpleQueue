@@ -58,6 +58,7 @@ func ExampleCounter() {
 	consumer := func(t interface{}) error {
 		task := t.(TaskStruct)
 
+		fmt.Printf("/ncounter+%v/n", task.IncrementBy)
 		atomic.AddInt64(&counter, task.IncrementBy)
 		time.Sleep(time.Second)
 		return nil
@@ -72,6 +73,7 @@ func ExampleCounter() {
 		})
 
 	newQueue.Start()
+
 	defer newQueue.Stop()
 
 	newQueue.TaskQueue <- TaskStruct{

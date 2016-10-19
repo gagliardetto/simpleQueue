@@ -1,5 +1,7 @@
 package simpleQueue
 
+// loosely inspired by http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang/
+
 import (
 	"fmt"
 	"sync"
@@ -21,8 +23,9 @@ type Queue struct {
 	maxQueueSize int
 	maxWorkers   int
 
-	wg    sync.WaitGroup
-	quits []chan bool
+	wg       sync.WaitGroup
+	quits    []chan bool
+	quitting bool
 }
 
 // NewQueue return a new queue object loaded with some default values
@@ -99,6 +102,37 @@ func (q *Queue) Start() {
 	go q.dispatch()
 }
 
+// Stop waits for all workers to finish the task they are working on, and then exits
+func (q *Queue) Stop() (notProcessed int) {
+
+	fmt.Println("#####################################################")
+	fmt.Println("################### STOPPING QUEUE ##################")
+	fmt.Println("#####################################################")
+
+	debugln("@@@ remaining: ", len(q.TaskQueue))
+
+	q.quitting = true
+
+	for i := range q.quits {
+		q.quits[i] <- true
+	}
+
+	debugln("@@@ remaining: ", len(q.TaskQueue))
+
+	// close(q.TaskQueue)
+	// close(q.workerPool)
+
+	// wait for all workers to finish their current tasks
+	q.wg.Wait()
+
+	// count not-processed tasks
+	notProcessed = len(q.TaskQueue)
+
+	debugln("@@@ remaining: ", notProcessed)
+
+	return
+}
+
 type worker struct {
 	id         int
 	taskQueue  chan interface{}
@@ -121,7 +155,13 @@ func (w worker) start(consumer func(interface{}) error, errorCallback func(error
 	go func() {
 		// wwg is the worker wait group
 		var wwg sync.WaitGroup
+		var quitting bool
 		for {
+
+			if quitting {
+				return
+			}
+
 			// Commit this worker's taskQueue to the worker pool,
 			// making it available to receive tasks.
 			w.workerPool <- w.taskQueue
@@ -152,6 +192,8 @@ func (w worker) start(consumer func(interface{}) error, errorCallback func(error
 				debugf("worker%d stopping; remaining: %v\n", w.id, len(w.taskQueue))
 				w.taskQueue = nil
 
+				quitting = true
+
 				// wait for current task of this worker to be completed
 				wwg.Wait()
 
@@ -176,12 +218,20 @@ func (w worker) stop() {
 func (q *Queue) dispatch() {
 	for {
 
+		if q.quitting {
+			return
+		}
+
 		select {
 
 		// fetch a task from the TaskQueue of the queue
 		case task, ok := <-q.TaskQueue:
 			if ok {
 				//debugln("taskN:", task.(Task).Name)
+
+				if task == nil {
+					continue
+				}
 
 				debugf("\nFETCHING workerTaskQueue, \n")
 				// some tasks will never be assigned, because there will be no workers !!!
@@ -206,6 +256,7 @@ func (q *Queue) dispatch() {
 					} else {
 						q.workerPool = nil
 						debugln("workerpool Channel closed!")
+						q.TaskQueue <- task
 						return
 					}
 					//}()
@@ -231,33 +282,6 @@ func (q *Queue) dispatch() {
 		}
 
 	}
-}
-
-// Stop waits for all workers to finish the task they are working on, and then exits
-func (q *Queue) Stop() (notProcessed int) {
-
-	fmt.Println("#####################################################")
-	fmt.Println("################### STOPPING QUEUE ##################")
-	fmt.Println("#####################################################")
-
-	debugln("@@@ remaining: ", len(q.TaskQueue))
-
-	for i := range q.quits {
-		q.quits[i] <- true
-	}
-
-	debugln("@@@ remaining: ", len(q.TaskQueue))
-
-	// close(q.TaskQueue)
-	// close(q.workerPool)
-
-	// wait for all workers to finish their current tasks
-	q.wg.Wait()
-
-	// count not-processed tasks
-	notProcessed = len(q.TaskQueue)
-
-	return
 }
 
 // @@@@@@@@@@@@@@@ Utils for debugging @@@@@@@@@@@@@@@
