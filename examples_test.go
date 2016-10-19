@@ -8,7 +8,7 @@ import (
 	"github.com/gagliardetto/simpleQueue"
 )
 
-func Example_Basic() {
+func Example_NewQueue() {
 	maxQueueSize := 100
 	maxWorkers := 5
 
@@ -47,7 +47,7 @@ func Example_Basic() {
 
 }
 
-func Example_Counter() {
+func Example_NewQueue1() {
 	var counter int64
 
 	maxQueueSize := 100
