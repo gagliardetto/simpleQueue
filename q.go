@@ -3,9 +3,6 @@ package simpleQueue
 import (
 	"fmt"
 	"sync"
-
-	"sync/atomic"
-	"time"
 )
 
 type Worker struct {
@@ -46,8 +43,8 @@ type Queue struct {
 
 func NewQueue() *Queue {
 	return &Queue{
-		maxQueueSize: 100,
-		maxWorkers:   5,
+		maxQueueSize: 100, // default value
+		maxWorkers:   5,   // default value
 	}
 }
 
@@ -221,69 +218,4 @@ func debugln(a ...interface{}) (int, error) {
 		return fmt.Println(a...)
 	}
 	return 0, nil
-}
-
-////////////////////////////////////
-
-func Example() {
-	var (
-		maxWorkers   = 10
-		maxQueueSize = 1000
-	)
-
-	qq := NewQueue()
-	qq.SetMaxSize(maxQueueSize)
-	qq.SetWorkers(maxWorkers)
-	qq.Consumer = Consumer
-	qq.Start()
-
-	go func() {
-	R:
-		for i := 1; i <= 1000; i++ {
-			select {
-			case qq.TaskQueue <- Task{Name: fmt.Sprintf("%v", i), Delay: time.Millisecond * 330}:
-			default:
-				break R
-				fmt.Println("@@@@@@@@ cannot send")
-				fmt.Println("@@@@@@@@ cannot send")
-				fmt.Println("@@@@@@@@ cannot send")
-				fmt.Println("@@@@@@@@ cannot send")
-			}
-		}
-	}()
-
-	time.Sleep(time.Millisecond * 3100)
-	/*
-		for {
-			m, ok := <-qq.TaskQueue
-			if ok {
-				fmt.Println("not proc: ", m.(Task).Name)
-			}
-		}
-	*/
-	rem := qq.Stop()
-	fmt.Println("remaining: ", rem)
-	fmt.Println("counter: ", counter)
-
-}
-
-// Task holds the attributes needed to perform unit of work
-type Task struct {
-	Name  string
-	Delay time.Duration
-}
-
-var counter int64 = 0
-
-func Consumer(j interface{}) error {
-	if j == nil {
-		return fmt.Errorf("%v", "j is nil")
-	}
-	task := j.(Task)
-
-	//fmt.Printf("%v --> name: %v; delay: %v\n", counter, task.Name, task.Delay)
-	time.Sleep(task.Delay)
-	atomic.AddInt64(&counter, 1)
-
-	return nil
 }
