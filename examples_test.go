@@ -1,4 +1,4 @@
-package simpleQueue
+package simpleQueue_test
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/gagliardetto/simpleQueue"
 )
 
-func Example_NewQueue() {
+func Example() {
 	maxQueueSize := 100
 	maxWorkers := 5
 
@@ -47,7 +47,7 @@ func Example_NewQueue() {
 
 }
 
-func Example_NewQueue1() {
+func Example_second() {
 	var counter int64
 
 	maxQueueSize := 100
