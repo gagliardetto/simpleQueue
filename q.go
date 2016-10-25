@@ -26,6 +26,8 @@ type Queue struct {
 	wg              sync.WaitGroup
 	quitWorkers     []chan bool
 	queueIsQuitting bool
+
+	sync.Mutex
 }
 
 // NewQueue return a new queue object loaded with some default values
@@ -111,7 +113,9 @@ func (q *Queue) Stop() (notProcessed int) {
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
 
+	q.Lock()
 	q.queueIsQuitting = true
+	q.Unlock()
 
 	for i := range q.quitWorkers {
 		q.quitWorkers[i] <- true
@@ -218,9 +222,12 @@ func (w worker) stop() {
 func (q *Queue) dispatch() {
 	for {
 
+		q.Lock()
 		if q.queueIsQuitting {
+			q.Unlock()
 			return
 		}
+		q.Unlock()
 
 		select {
 
