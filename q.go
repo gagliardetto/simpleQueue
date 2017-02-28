@@ -118,7 +118,9 @@ func (q *Queue) Stop() (notProcessed int) {
 	q.Unlock()
 
 	for i := range q.quitWorkers {
+		//go func(i int) {
 		q.quitWorkers[i] <- true
+		//}(i)
 	}
 
 	debugln("@@@ remaining: ", len(q.TaskQueue))
@@ -256,14 +258,18 @@ func (q *Queue) dispatch() {
 							workerTaskQueue <- task
 						} else {
 							// return the task to the TaskQueue
-							q.TaskQueue <- task
+							go func() {
+								q.TaskQueue <- task
+							}()
 							return
 						}
 
 					} else {
 						q.workerPool = nil
 						debugln("workerpool Channel closed!")
-						q.TaskQueue <- task
+						go func() {
+							q.TaskQueue <- task
+						}()
 						return
 					}
 					//}()
@@ -289,6 +295,18 @@ func (q *Queue) dispatch() {
 		}
 
 	}
+}
+
+// PushTask pushes a task to the queue
+func (q *Queue) PushTask(task interface{}) error {
+	var err error
+	defer func() {
+		if x := recover(); x != nil {
+			err = fmt.Errorf("Unable to send: %v", x)
+		}
+	}()
+	q.TaskQueue <- task
+	return err
 }
 
 // @@@@@@@@@@@@@@@ Utils for debugging @@@@@@@@@@@@@@@
