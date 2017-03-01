@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	debugging           = true
+	debugging           = false
 	defaultMaxQueueSize = 100
 	defaultMaxWorkers   = 5
 )
@@ -133,8 +133,11 @@ func (q *Queue) Stop() (countOfNonProcessedTasks int) {
 
 	debugln("Waiting for wg to quit...")
 	// wait for all workers to finish their current tasks
-	q.wg.Wait()
-	debugln("wg quit.")
+	if waitTimeout(&q.wg, time.Second*60) {
+		debugln("\nTimed out waiting for wg")
+	} else {
+		debugln("\nwg finished by itself")
+	}
 
 	// count not-processed tasks
 	countOfNonProcessedTasks = len(q.TaskQueue)
@@ -338,4 +341,20 @@ func debugln(a ...interface{}) (int, error) {
 		return fmt.Println(a...)
 	}
 	return 0, nil
+}
+
+// waitTimeout waits for the waitgroup for the specified max timeout.
+// Returns true if waiting timed out.
+func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
+	c := make(chan struct{})
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+	select {
+	case <-c:
+		return false // completed normally
+	case <-time.After(timeout):
+		return true // timed out
+	}
 }
