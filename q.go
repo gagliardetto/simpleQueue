@@ -5,10 +5,11 @@ package simpleQueue
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 const (
-	debugging           = false
+	debugging           = true
 	defaultMaxQueueSize = 100
 	defaultMaxWorkers   = 5
 )
@@ -101,47 +102,51 @@ func (q *Queue) Start() {
 		worker.start(q.Consumer, q.ErrorCallback, &q.wg)
 	}
 
-	go q.dispatch()
+	go q.startManager()
 }
 
 // Stop waits for all workers to finish the task they are working on, and then exits
-func (q *Queue) Stop() (notProcessed int) {
+func (q *Queue) Stop() (countOfNonProcessedTasks int) {
 
 	fmt.Println("#####################################################")
 	fmt.Println("################### STOPPING QUEUE ##################")
 	fmt.Println("#####################################################")
 
-	debugln("@@@ remaining: ", len(q.TaskQueue))
+	debugln("@@@ remaining tasks: ", len(q.TaskQueue))
 
 	q.Lock()
 	q.queueIsQuitting = true
 	q.Unlock()
 
 	for i := range q.quitWorkers {
-		//go func(i int) {
-		q.quitWorkers[i] <- true
-		//}(i)
+		go func(i int) {
+			debugln("Signaling to worker to quit...; worker ", i+1)
+			q.quitWorkers[i] <- true
+			debugln("Signal to worker to quit sent; worker ", i+1)
+		}(i)
 	}
 
-	debugln("@@@ remaining: ", len(q.TaskQueue))
+	debugln("@@@ remaining tasks: ", len(q.TaskQueue))
 
 	// close(q.TaskQueue)
 	// close(q.workerPool)
 
+	debugln("Waiting for wg to quit...")
 	// wait for all workers to finish their current tasks
 	q.wg.Wait()
+	debugln("wg quit.")
 
 	// count not-processed tasks
-	notProcessed = len(q.TaskQueue)
+	countOfNonProcessedTasks = len(q.TaskQueue)
 
-	debugln("@@@ remaining: ", notProcessed)
+	debugln("@@@ remaining tasks: ", countOfNonProcessedTasks)
 
 	return
 }
 
 type worker struct {
 	id         int
-	taskQueue  chan interface{}
+	taskCart   chan interface{}
 	workerPool chan chan interface{}
 	quitChan   chan bool
 }
@@ -150,32 +155,38 @@ type worker struct {
 func newWorker(id int, workerPool chan chan interface{}) worker {
 	return worker{
 		id:         id,
-		taskQueue:  make(chan interface{}),
+		taskCart:   make(chan interface{}),
 		workerPool: workerPool,
 		quitChan:   make(chan bool),
 	}
 }
 
 // start starts the worker
-func (w worker) start(consumer func(interface{}) error, errorCallback func(error), wg *sync.WaitGroup) {
-	go func() {
+func (w *worker) start(consumer func(interface{}) error, errorCallback func(error), wg *sync.WaitGroup) {
+	go func(w *worker) {
 		// wwg is the worker wait group
 		var wwg sync.WaitGroup
 		var workerIsQuitting bool
+
+	workLoop:
 		for {
 
 			if workerIsQuitting {
 				return
 			}
 
-			// Commit this worker's taskQueue to the worker pool,
+			select {
+			// Commit this worker's taskCart to the worker pool,
 			// making it available to receive tasks.
-			w.workerPool <- w.taskQueue
+			case w.workerPool <- w.taskCart:
+			case <-time.After(time.Second):
+				continue workLoop
+			}
 
 			select {
-			// Fetch task from taskQueue
-			case task := <-w.taskQueue:
-				//fmt.Printf("worker%v starting task %v\n", w.id, task.(Task).Name)
+			// Fetch task from taskCart
+			case task := <-w.taskCart:
+				debugf("\nWorker %v starting task %v", w.id, task)
 
 				// make known that this worker is processing a task
 				wwg.Add(1)
@@ -188,40 +199,44 @@ func (w worker) start(consumer func(interface{}) error, errorCallback func(error
 						errorCallback(err)
 					}
 				}
-				//fmt.Printf("worker%v FINISHED task %v\n\n", w.id, task.(Task).Name)
+				debugf("\nWorker %v FINISHED task %v", w.id, task)
 
 				// Signal that the task has been processed,
 				// and that this worker is not working on any task.
 				wwg.Done()
 			case <-w.quitChan:
 				// We have been asked to stop.
-				debugf("worker%d stopping; remaining: %v\n", w.id, len(w.taskQueue))
-				w.taskQueue = nil
+				debugf("\nWorker %d stopping; remaining tasks: %v", w.id, len(w.taskCart))
+				w.taskCart = nil
 
 				workerIsQuitting = true
 
+				debugf("\nWorker %v is waiting for current task to complete...", w.id)
 				// wait for current task of this worker to be completed
 				wwg.Wait()
+				debugf("\nWorker %v is now about to exit.", w.id)
 
-				// close(w.taskQueue)
+				// close(w.taskCart)
 
 				// signal that this worker has finished the current task
 				// and currently is not running any tasks.
 				wg.Done()
+				debugf("\nWorker %v has signaled that it is done with work.", w.id)
 
 				return
+
 			}
 		}
-	}()
+	}(w)
 }
 
-func (w worker) stop() {
+func (w *worker) stop() {
 	go func() {
 		w.quitChan <- true
 	}()
 }
 
-func (q *Queue) dispatch() {
+func (q *Queue) startManager() {
 	for {
 
 		q.Lock()
@@ -242,34 +257,34 @@ func (q *Queue) dispatch() {
 					continue
 				}
 
-				debugf("\nFETCHING workerTaskQueue, \n")
+				debugf("\nFETCHING workerTaskCart, \n")
 				// some tasks will never be assigned, because there will be no workers !!!
 
 				select {
-				// fetch a task queue of a worker from the workerPool
-				case workerTaskQueue, ok := <-q.workerPool:
+				// fetch a task cart of a worker from the workerPool
+				case workerTaskCart, ok := <-q.workerPool:
 					//go func() {
 					if ok {
-						//fmt.Printf("ADDING task to workerTaskQueue, %v\n\n", task.(Task).Name)
+						//fmt.Printf("ADDING task to workerTaskCart, %v\n\n", task.(Task).Name)
 
-						// if the workerTaskQueue is not nil (nil means the worker is shutting down)
-						if workerTaskQueue != nil {
-							// pass the task to the task queue of the worker
-							workerTaskQueue <- task
+						// if the workerTaskCart is not nil (nil means the worker is shutting down)
+						if workerTaskCart != nil {
+							// pass the task to the task cart of the worker
+							workerTaskCart <- task
 						} else {
 							// return the task to the TaskQueue
-							go func() {
+							go func(task interface{}) {
 								q.TaskQueue <- task
-							}()
+							}(task)
 							return
 						}
 
 					} else {
-						q.workerPool = nil
+						//q.workerPool = nil
 						debugln("workerpool Channel closed!")
-						go func() {
+						go func(task interface{}) {
 							q.TaskQueue <- task
-						}()
+						}(task)
 						return
 					}
 					//}()
