@@ -3,6 +3,7 @@ package simpleQueue
 // loosely inspired by http://marcio.io/2015/07/handling-1-million-requests-per-minute-with-golang/
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -324,6 +325,28 @@ func (q *Queue) PushTask(task interface{}) error {
 		}
 	}()
 	q.TaskQueue <- task
+	return err
+}
+
+// ErrorWriteTimeout happens when the write timeouts
+var ErrorWriteTimeout = errors.New("write timeout")
+
+// PushTaskWithTimeout pushes a task to the queue, or timeouts if cannot write to queue
+// in the specified time.
+func (q *Queue) PushTaskWithTimeout(task interface{}, timeout time.Duration) error {
+	var err error
+	defer func() {
+		if x := recover(); x != nil {
+			err = fmt.Errorf("Unable to send: %v", x)
+		}
+	}()
+
+	select {
+	case q.TaskQueue <- task:
+	case <-time.After(timeout):
+		return ErrorWriteTimeout
+	}
+
 	return err
 }
 
