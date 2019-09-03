@@ -106,8 +106,15 @@ func (q *Queue) Start() {
 	go q.startManager()
 }
 
+var DefaultStopTimeout = time.Second * 60
+
 // Stop waits for all workers to finish the task they are working on, and then exits
-func (q *Queue) Stop() (countOfNonProcessedTasks int) {
+func (q *Queue) Stop() int {
+	return q.StopWithTimeout(DefaultStopTimeout)
+}
+
+// Stop waits for all workers to finish the task they are working on, and then exits
+func (q *Queue) StopWithTimeout(timeout time.Duration) (countOfNonProcessedTasks int) {
 
 	fmt.Println("#####################################################")
 	fmt.Println("################### STOPPING QUEUE ##################")
@@ -134,7 +141,7 @@ func (q *Queue) Stop() (countOfNonProcessedTasks int) {
 
 	debugln("Waiting for wg to quit...")
 	// wait for all workers to finish their current tasks
-	if waitTimeout(&q.wg, time.Second*60) {
+	if waitTimeout(&q.wg, timeout) {
 		debugln("\nTimed out waiting for wg")
 	} else {
 		debugln("\nwg finished by itself")
